@@ -54,9 +54,18 @@ trap dung TERM INT
 log "bat dau (pid $$), chu ky ${CHU_KY}s, nghi ${GIO_NGU}h-${GIO_THUC}h"
 gan_man_hinh_khoa
 EVF=/tmp/manhinhcho.ev
+ban_code() { stat -c %Y $D/manhinhcho.sh $D/chung.sh 2>/dev/null | tr '\n' ' '; }
+BAN_DAU=$(ban_code)
+tuoi_sach() { echo $(( $(date +%s) - $(cat $D/last_sach 2>/dev/null || echo 0) )); }
+
 while true; do
+    . $D/cauhinh.sh                       # doc lai cau hinh moi vong
+    if [ -n "$BAN_DAU" ] && [ "$(ban_code)" != "$BAN_DAU" ]; then
+        log "co ban code moi, khoi dong lai"
+        exit 1                            # upstart (respawn) se chay lai ban moi
+    fi
     # chay nen + wait de nhan duoc tin hieu dung ngay lap tuc
-    lipc-wait-event com.lab126.powerd goingToScreenSaver,readyToSuspend,wakeupFromSuspend > $EVF 2>/dev/null &
+    lipc-wait-event com.lab126.powerd goingToScreenSaver,outOfScreenSaver,readyToSuspend,wakeupFromSuspend > $EVF 2>/dev/null &
     WPID=$!
     wait $WPID
     WPID=""
@@ -66,6 +75,14 @@ while true; do
             log "vao man hinh cho"
             if [ "$VE_DE" = "1" ]; then sleep 4; dang_cho && ve && log "ve de: OK"; fi
             if [ $(tuoi) -ge $CHU_KY ]; then cap_nhat; dang_cho && ve; fi
+            ;;
+        outOfScreenSaver*)
+            # mo khoa may: neu wifi dang bat san va lau chua dong bo -> dong bo sach (khong ton them pin)
+            if [ "$(lipc-get-prop com.lab126.cmd wirelessEnable 2>/dev/null)" = "1" ] && \
+               [ $(tuoi_sach) -ge ${DONG_BO_KHI_MO:-1800} ]; then
+                ( sleep 5
+                  [ "$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ] && dong_bo_sach ) &
+            fi
             ;;
         readyToSuspend*)
             con=$(lan_toi)

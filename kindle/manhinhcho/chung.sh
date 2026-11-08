@@ -57,6 +57,7 @@ dong_bo_sach() {
         [ "$ma" != "000" ] && head -c 200 $D/ds.tmp | tr '\n' ' ' >> $LOG && echo >> $LOG
         rm -f $D/ds.tmp; return 1
     fi
+    date +%s > $D/last_sach
     touch $D/da_tai.txt
     moi=0
     while IFS="	" read -r sha duong ten; do

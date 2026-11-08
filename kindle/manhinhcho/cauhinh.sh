@@ -9,3 +9,4 @@ THU_MUC_SACH=/mnt/us/documents/Sach-GitHub
 # Ma truy cap (chi doc) dat trong file token.txt cung thu muc nay
 
 VE_DE=1                     # 1 = ve them anh len sau 4s (du phong neu thay anh goc khong an). 0 = tat
+DONG_BO_KHI_MO=1800          # mo khoa may + wifi dang bat: dong bo sach neu da qua so giay nay
