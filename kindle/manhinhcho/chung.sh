@@ -1,10 +1,13 @@
 # Ham dung chung cho man hinh cho + dong bo sach
-D=/mnt/us/manhinhcho
-IMG=$D/bg.png
+D=/mnt/us/manhinhcho          # thu muc cua ban: token, log, cau hinh goc (thay qua USB)
+R=/var/local/manhinhcho       # ban chay that + anh (khong nam trong /mnt/us)
+mkdir -p $R
+IMG=$R/bg.png
 LOG=$D/log.txt
-. $D/cauhinh.sh
+if [ -f $R/cauhinh.sh ]; then . $R/cauhinh.sh; else . $D/cauhinh.sh; fi
 
 log() {
+    [ -d $D ] || return 0          # dang o che do USB
     echo "$(date '+%m-%d %H:%M:%S') $*" >> $LOG
     if [ $(wc -l < $LOG) -gt 400 ]; then tail -300 $LOG > $LOG.tmp && mv $LOG.tmp $LOG; fi
 }
@@ -57,7 +60,7 @@ dong_bo_sach() {
         [ "$ma" != "000" ] && head -c 200 $D/ds.tmp | tr '\n' ' ' >> $LOG && echo >> $LOG
         rm -f $D/ds.tmp; return 1
     fi
-    date +%s > $D/last_sach
+    date +%s > $R/last_sach
     touch $D/da_tai.txt
     moi=0
     while IFS="	" read -r sha duong ten; do
@@ -84,7 +87,7 @@ dong_bo_sach() {
 
 # Mot lan cap nhat day du: wifi -> anh -> sach -> tra wifi
 cap_nhat() {
-    date +%s > $D/last
+    date +%s > $R/last
     lipc-set-prop com.lab126.powerd deferSuspend 90 >/dev/null 2>&1
     if bat_wifi; then
         tai_anh

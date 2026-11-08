@@ -2,8 +2,9 @@
 # Dich vu man hinh cho lich (chay boi upstart: /etc/upstart/manhinhcho.conf)
 # - Thay anh man hinh khoa mac dinh bang anh lich (bind mount, khong sua file goc)
 # - Dinh ky tu thuc day: tai anh moi + dong bo sach
-. /mnt/us/manhinhcho/chung.sh
-echo $$ > $D/pid
+. /var/local/manhinhcho/chung.sh
+echo $$ > $R/pid
+[ -s $IMG ] || cp $D/bg.png $IMG 2>/dev/null
 
 SS_GOC=/usr/share/blanket/screensaver
 SS_MOI=/var/local/manhinhcho/ss
@@ -28,7 +29,7 @@ gan_man_hinh_khoa() {
 
 go_man_hinh_khoa() { umount $SS_GOC 2>/dev/null && log "tra lai man hinh khoa goc"; }
 
-tuoi() { echo $(( $(date +%s) - $(cat $D/last 2>/dev/null || echo 0) )); }
+tuoi() { echo $(( $(date +%s) - $(cat $R/last 2>/dev/null || echo 0) )); }
 
 la_ban_dem() {
     if [ $GIO_NGU -gt $GIO_THUC ]; then [ $1 -ge $GIO_NGU ] || [ $1 -lt $GIO_THUC ]
@@ -48,7 +49,7 @@ lan_toi() {
 }
 
 WPID=""
-dung() { [ -n "$WPID" ] && kill $WPID 2>/dev/null; go_man_hinh_khoa; rm -f $D/pid; exit 0; }
+dung() { [ -n "$WPID" ] && kill $WPID 2>/dev/null; go_man_hinh_khoa; rm -f $R/pid; exit 0; }
 trap dung TERM INT
 
 log "bat dau (pid $$), chu ky ${CHU_KY}s, nghi ${GIO_NGU}h-${GIO_THUC}h"
@@ -56,11 +57,14 @@ gan_man_hinh_khoa
 EVF=/tmp/manhinhcho.ev
 ban_code() { stat -c %Y $D/manhinhcho.sh $D/chung.sh 2>/dev/null | tr '\n' ' '; }
 BAN_DAU=$(ban_code)
-tuoi_sach() { echo $(( $(date +%s) - $(cat $D/last_sach 2>/dev/null || echo 0) )); }
+tuoi_sach() { echo $(( $(date +%s) - $(cat $R/last_sach 2>/dev/null || echo 0) )); }
 
 while true; do
-    . $D/cauhinh.sh                       # doc lai cau hinh moi vong
-    if [ -n "$BAN_DAU" ] && [ "$(ban_code)" != "$BAN_DAU" ]; then
+    # doc lai cau hinh moi vong (neu khong o che do USB)
+    [ -f $D/cauhinh.sh ] && cp $D/cauhinh.sh $R/cauhinh.sh 2>/dev/null
+    . $R/cauhinh.sh
+    MOI=$(ban_code)
+    if [ -n "$BAN_DAU" ] && [ -n "$MOI" ] && [ "$MOI" != "$BAN_DAU" ]; then
         log "co ban code moi, khoi dong lai"
         exit 1                            # upstart (respawn) se chay lai ban moi
     fi

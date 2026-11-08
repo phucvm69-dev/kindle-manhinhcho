@@ -7,8 +7,8 @@ D=/mnt/us/manhinhcho
 CONF=/etc/upstart/manhinhcho.conf
 
 # dung ban cu chay tu scriptlet (neu con)
-if [ -f $D/pid ] && kill -0 $(cat $D/pid) 2>/dev/null && ! initctl status manhinhcho 2>/dev/null | grep -q running; then
-    kill $(cat $D/pid) 2>/dev/null
+if [ -f /var/local/manhinhcho/pid ] && kill -0 $(cat /var/local/manhinhcho/pid) 2>/dev/null && ! initctl status manhinhcho 2>/dev/null | grep -q running; then
+    kill $(cat /var/local/manhinhcho/pid) 2>/dev/null
 fi
 
 if ! cmp -s $D/manhinhcho.conf $CONF; then
@@ -20,7 +20,7 @@ if [ ! -f $CONF ]; then
     echo "LOI: khong cai duoc dich vu."; sleep 6; exit 1
 fi
 
-rm -f $D/last          # tai anh ngay lan ngu dau tien
+rm -f /var/local/manhinhcho/last          # tai anh ngay lan ngu dau tien
 initctl stop manhinhcho >/dev/null 2>&1
 sleep 1
 initctl start manhinhcho >/dev/null 2>&1
