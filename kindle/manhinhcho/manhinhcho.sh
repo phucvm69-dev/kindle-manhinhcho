@@ -1,16 +1,40 @@
 #!/bin/sh
-# Chay ngam: ve anh lich len man hinh cho; dinh ky tu thuc day cap nhat anh + sach.
+# Dich vu man hinh cho lich (chay boi upstart: /etc/upstart/manhinhcho.conf)
+# - Thay anh man hinh khoa mac dinh bang anh lich (bind mount, khong sua file goc)
+# - Dinh ky tu thuc day: tai anh moi + dong bo sach
 . /mnt/us/manhinhcho/chung.sh
 echo $$ > $D/pid
 
+SS_GOC=/usr/share/blanket/screensaver
+SS_MOI=/var/local/manhinhcho/ss
+
+gan_man_hinh_khoa() {
+    mount | grep -q " $SS_GOC " && return 0
+    mkdir -p $SS_MOI
+    # giu nguyen cac anh khac (che do tre em...), thay bg_ssNN bang anh lich
+    for f in $SS_GOC/*; do
+        b=$(basename "$f")
+        case "$b" in
+            bg_ss[0-9][0-9].png) ln -sf $IMG "$SS_MOI/$b" ;;
+            *) [ -e "$SS_MOI/$b" ] || cp -p "$f" "$SS_MOI/$b" ;;
+        esac
+    done
+    if mount --bind $SS_MOI $SS_GOC; then
+        log "da thay anh man hinh khoa ($(ls $SS_MOI | grep -c '^bg_ss') anh)"
+    else
+        log "LOI: khong thay duoc anh man hinh khoa"
+    fi
+}
+
+go_man_hinh_khoa() { umount $SS_GOC 2>/dev/null && log "tra lai man hinh khoa goc"; }
+
 tuoi() { echo $(( $(date +%s) - $(cat $D/last 2>/dev/null || echo 0) )); }
 
-la_ban_dem() {   # $1 = gio (0-23)
+la_ban_dem() {
     if [ $GIO_NGU -gt $GIO_THUC ]; then [ $1 -ge $GIO_NGU ] || [ $1 -lt $GIO_THUC ]
     else [ $1 -ge $GIO_NGU ] && [ $1 -lt $GIO_THUC ]; fi
 }
 
-# So giay toi lan thuc day ke tiep (bo qua ban dem)
 lan_toi() {
     h=$(date +%H); m=$(date +%M); s=$(date +%S)
     giay=$(( ${h#0} * 3600 + ${m#0} * 60 + ${s#0} ))
@@ -23,12 +47,24 @@ lan_toi() {
     echo $con
 }
 
+WPID=""
+dung() { [ -n "$WPID" ] && kill $WPID 2>/dev/null; go_man_hinh_khoa; rm -f $D/pid; exit 0; }
+trap dung TERM INT
+
 log "bat dau (pid $$), chu ky ${CHU_KY}s, nghi ${GIO_NGU}h-${GIO_THUC}h"
+gan_man_hinh_khoa
+EVF=/tmp/manhinhcho.ev
 while true; do
-    EV=$(lipc-wait-event com.lab126.powerd goingToScreenSaver,readyToSuspend,wakeupFromSuspend 2>/dev/null)
+    # chay nen + wait de nhan duoc tin hieu dung ngay lap tuc
+    lipc-wait-event com.lab126.powerd goingToScreenSaver,readyToSuspend,wakeupFromSuspend > $EVF 2>/dev/null &
+    WPID=$!
+    wait $WPID
+    WPID=""
+    EV=$(cat $EVF 2>/dev/null)
     case "$EV" in
         goingToScreenSaver*)
-            sleep 2; ve
+            log "vao man hinh cho"
+            if [ "$VE_DE" = "1" ]; then sleep 4; dang_cho && ve && log "ve de: OK"; fi
             if [ $(tuoi) -ge $CHU_KY ]; then cap_nhat; dang_cho && ve; fi
             ;;
         readyToSuspend*)
@@ -37,8 +73,9 @@ while true; do
             log "ngu, hen thuc sau $((con / 60)) phut"
             ;;
         wakeupFromSuspend*)
+            log "thuc day"
             if dang_cho && [ $(tuoi) -ge $(( CHU_KY - 600 )) ]; then cap_nhat; dang_cho && ve; fi
             ;;
-        "") sleep 5 ;;
+        *) sleep 5 ;;
     esac
 done

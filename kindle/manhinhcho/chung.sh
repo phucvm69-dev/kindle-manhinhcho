@@ -29,10 +29,11 @@ bat_wifi() {
 tra_wifi() { [ "$WIFI_TRUOC" = "0" ] && lipc-set-prop com.lab126.cmd wirelessEnable 0; }
 
 tai_anh() {
-    if curl -sfL -k -m 40 "$URL_ANH?t=$(date +%s)" -o $IMG.tmp && [ -s $IMG.tmp ]; then
+    ma=$(curl -sL -k -m 40 -w "%{http_code}" "$URL_ANH?t=$(date +%s)" -o $IMG.tmp)
+    if [ "$ma" = "200" ] && [ -s $IMG.tmp ]; then
         mv $IMG.tmp $IMG; log "anh: OK"
     else
-        rm -f $IMG.tmp; log "anh: LOI tai"
+        rm -f $IMG.tmp; log "anh: LOI tai (HTTP $ma, wifi=$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null))"
     fi
 }
 

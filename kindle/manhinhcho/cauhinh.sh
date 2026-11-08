@@ -7,3 +7,5 @@ GIO_THUC=6                  # ...den gio nay: khong thuc day (tiet kiem pin ban 
 REPO_SACH="phucvm69-dev/kindle-sach"
 THU_MUC_SACH=/mnt/us/documents/Sach-GitHub
 # Ma truy cap (chi doc) dat trong file token.txt cung thu muc nay
+
+VE_DE=1                     # 1 = ve them anh len sau 4s (du phong neu thay anh goc khong an). 0 = tat
