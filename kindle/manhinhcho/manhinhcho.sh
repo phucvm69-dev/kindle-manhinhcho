@@ -2,8 +2,9 @@
 # Dich vu man hinh cho lich (chay boi upstart: /etc/upstart/manhinhcho.conf)
 # - Thay anh man hinh khoa mac dinh bang anh lich (bind mount, khong sua file goc)
 # - Dinh ky tu thuc day: tai anh moi + dong bo sach
-. /var/local/manhinhcho/chung.sh
+. /var/local/manhinhcho/chung.sh     # ban da cai bang BAT, khong doc code tu USB
 echo $$ > $R/pid
+rmdir $R/dang_cap_nhat 2>/dev/null   # xoa khoa cu neu lan truoc bi ngat giua chung
 [ -s $IMG ] || cp $D/bg.png $IMG 2>/dev/null
 
 SS_GOC=/usr/share/blanket/screensaver
@@ -55,19 +56,10 @@ trap dung TERM INT
 log "bat dau (pid $$), chu ky ${CHU_KY}s, nghi ${GIO_NGU}h-${GIO_THUC}h"
 gan_man_hinh_khoa
 EVF=/tmp/manhinhcho.ev
-ban_code() { stat -c %Y $D/manhinhcho.sh $D/chung.sh 2>/dev/null | tr '\n' ' '; }
-BAN_DAU=$(ban_code)
 tuoi_sach() { echo $(( $(date +%s) - $(cat $R/last_sach 2>/dev/null || echo 0) )); }
 
 while true; do
-    # doc lai cau hinh moi vong (neu khong o che do USB)
-    [ -f $D/cauhinh.sh ] && cp $D/cauhinh.sh $R/cauhinh.sh 2>/dev/null
-    . $R/cauhinh.sh
-    MOI=$(ban_code)
-    if [ -n "$BAN_DAU" ] && [ -n "$MOI" ] && [ "$MOI" != "$BAN_DAU" ]; then
-        log "co ban code moi, khoi dong lai"
-        exit 1                            # upstart (respawn) se chay lai ban moi
-    fi
+    doc_cau_hinh                          # doc lai cau hinh (chi lay gia tri, co kiem tra)
     # chay nen + wait de nhan duoc tin hieu dung ngay lap tuc
     lipc-wait-event com.lab126.powerd goingToScreenSaver,outOfScreenSaver,readyToSuspend,wakeupFromSuspend > $EVF 2>/dev/null &
     WPID=$!
@@ -77,8 +69,11 @@ while true; do
     case "$EV" in
         goingToScreenSaver*)
             log "vao man hinh cho"
-            if [ "$VE_DE" = "1" ]; then sleep 4; dang_cho && ve && log "ve de: OK"; fi
-            if [ $(tuoi) -ge $CHU_KY ]; then cap_nhat; dang_cho && ve; fi
+            # chay nen de vong lap van bat duoc readyToSuspend (hen gio thuc)
+            ( if [ "$VE_DE" = "1" ]; then sleep 4; dang_cho && ve; fi
+              if [ $(tuoi) -ge $CHU_KY ] && mkdir $R/dang_cap_nhat 2>/dev/null; then
+                  cap_nhat; dang_cho && ve; rmdir $R/dang_cap_nhat
+              fi ) &
             ;;
         outOfScreenSaver*)
             # mo khoa may: neu wifi dang bat san va lau chua dong bo -> dong bo sach (khong ton them pin)
@@ -95,7 +90,9 @@ while true; do
             ;;
         wakeupFromSuspend*)
             log "thuc day"
-            if dang_cho && [ $(tuoi) -ge $(( CHU_KY - 600 )) ]; then cap_nhat; dang_cho && ve; fi
+            if dang_cho && [ $(tuoi) -ge $(( CHU_KY - 600 )) ] && mkdir $R/dang_cap_nhat 2>/dev/null; then
+                ( cap_nhat; dang_cho && ve; rmdir $R/dang_cap_nhat ) &
+            fi
             ;;
         *) sleep 5 ;;
     esac

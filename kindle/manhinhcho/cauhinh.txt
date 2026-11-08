@@ -1,0 +1,10 @@
+# Cau hinh man hinh cho lich. Sua xong rut cap la co hieu luc (khong can bam gi).
+# File nay chi duoc DOC gia tri, khong chay nhu code.
+URL_ANH=https://phucvm69-dev.github.io/kindle-manhinhcho/bg.png
+CHU_KY=7200          # giay giua 2 lan cap nhat (7200 = 2 gio, toi thieu 900)
+GIO_NGU=23           # tu gio nay...
+GIO_THUC=6           # ...den gio nay: khong thuc day (tiet kiem pin ban dem)
+VE_DE=1              # 1 = ve them anh sau 4 giay (du phong). 0 = tat
+DONG_BO_KHI_MO=1800  # mo khoa + wifi dang bat: dong bo sach neu da qua so giay nay
+REPO_SACH=phucvm69-dev/kindle-sach
+# Ma truy cap (chi doc) dat trong file token.txt cung thu muc nay

@@ -2,7 +2,8 @@
 # Name: Sach GitHub - DONG BO NGAY
 # Author: kindle-manhinhcho
 
-. /mnt/us/manhinhcho/chung.sh
+[ -f /var/local/manhinhcho/chung.sh ] || { echo "Chua cai: bam Man hinh cho - BAT truoc."; sleep 5; exit 1; }
+. /var/local/manhinhcho/chung.sh
 if [ ! -s $D/token.txt ]; then
     echo "Chua co token.txt trong thu muc manhinhcho."
     sleep 5; exit 1
