@@ -1,0 +1,56 @@
+name: Cap nhat man hinh cho
+
+on:
+  schedule:
+    - cron: "7 * * * *"      # mỗi giờ, phút thứ 7 (giờ UTC)
+  workflow_dispatch:          # cho phép bấm chạy tay
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write              # để tự giữ workflow không bị GitHub tắt sau 60 ngày
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  tao-anh:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pillow
+
+      - name: Lay lich su gia vang tu lan truoc
+        run: |
+          mkdir -p site
+          curl -sfL "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/gia_vang_lich_su.json" \
+            -o site/gia_vang_lich_su.json || rm -f site/gia_vang_lich_su.json
+
+      - name: Tao anh
+        env:
+          FILE_RA: site/bg.png
+          FILE_LS_VANG: site/gia_vang_lich_su.json
+        run: python tao_man_hinh_cho.py
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Giu workflow luon bat
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/cap-nhat.yml/enable" || true
