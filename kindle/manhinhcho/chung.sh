@@ -44,8 +44,17 @@ dong_bo_sach() {
     API="https://api.github.com/repos/$REPO_SACH/contents"
     H1="Authorization: Bearer $TOKEN"
     H2="Accept: application/vnd.github.raw"
-    if ! curl -sfL -k -m 30 -H "$H1" -H "$H2" "$API/kindle/danh_sach.txt" -o $D/ds.tmp; then
-        log "sach: LOI tai danh sach (kiem tra token.txt)"; return 1
+    ma=$(curl -sL -k -m 30 -w "%{http_code}" -H "$H1" -H "$H2" "$API/kindle/danh_sach.txt" -o $D/ds.tmp)
+    if [ "$ma" != "200" ]; then
+        case "$ma" in
+            401) ly="token sai hoac het han" ;;
+            403|404) ly="token khong co quyen doc kho $REPO_SACH (can Contents: Read-only)" ;;
+            000) ly="khong ket noi duoc GitHub" ;;
+            *) ly="loi khac" ;;
+        esac
+        log "sach: LOI tai danh sach - HTTP $ma: $ly"
+        [ "$ma" != "000" ] && head -c 200 $D/ds.tmp | tr '\n' ' ' >> $LOG && echo >> $LOG
+        rm -f $D/ds.tmp; return 1
     fi
     touch $D/da_tai.txt
     moi=0
