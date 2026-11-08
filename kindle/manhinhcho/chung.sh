@@ -39,7 +39,7 @@ tai_anh() {
 # --- Dong bo sach mot chieu GitHub -> Kindle ---
 # Nho ma bam cac sach da tai trong da_tai.txt: xoa tren Kindle se khong bi tai lai.
 dong_bo_sach() {
-    TOKEN=$(cat $D/token.txt 2>/dev/null | tr -d '\r\n ')
+    TOKEN=$(cat $D/token.txt 2>/dev/null | tr -cd 'A-Za-z0-9_')
     [ -z "$TOKEN" ] && return 0
     API="https://api.github.com/repos/$REPO_SACH/contents"
     H1="Authorization: Bearer $TOKEN"
