@@ -10,7 +10,7 @@ CACERT=$R/cacert.pem
 log() {
     [ -d $D ] || return 0          # dang o che do USB
     echo "$(date '+%m-%d %H:%M:%S') $*" >> $LOG
-    if [ $(wc -l < $LOG) -gt 400 ]; then tail -300 $LOG > $LOG.tmp && mv $LOG.tmp $LOG; fi
+    if [ $(wc -l < $LOG) -gt 150 ]; then tail -100 $LOG > $LOG.tmp && mv $LOG.tmp $LOG; fi
 }
 
 # --- Cau hinh: DOC tung gia tri va KIEM TRA, khong chay file cau hinh nhu code ---
