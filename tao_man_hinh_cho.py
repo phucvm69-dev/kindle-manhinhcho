@@ -331,109 +331,236 @@ def trieu_luong(v):
     return s.replace(".", ",")
 
 
-def ve(hom_nay: date, thoi_tiet, vang=None):
+# ---------------- NGÀY TỐT XẤU (lịch vạn niên) ----------------
+# Sao trực ngày: tháng âm lịch 1&7 khởi Thanh Long ở ngày Tý, 2&8 ở Dần, 3&9 Thìn, 4&10 Ngọ, 5&11 Thân, 6&12 Tuất.
+# Đã đối chiếu 8/8 ngày công bố tháng 10/2026.
+SAO = [("Thanh Long", True), ("Minh Đường", True), ("Thiên Hình", False), ("Chu Tước", False),
+       ("Kim Quỹ", True), ("Kim Đường", True), ("Bạch Hổ", False), ("Ngọc Đường", True),
+       ("Thiên Lao", False), ("Huyền Vũ", False), ("Tư Mệnh", True), ("Câu Trận", False)]
+TRUC = ["Kiến", "Trừ", "Mãn", "Bình", "Định", "Chấp", "Phá", "Nguy", "Thành", "Thu", "Khai", "Bế"]
+HY_THAN = ["Đông Bắc", "Tây Bắc", "Tây Nam", "Chính Nam", "Đông Nam"]   # theo can ngày (Giáp/Kỷ, Ất/Canh, ...)
+
+
+def tot_xau(d: date):
+    ld, lm, *_ = solar_to_lunar(d.day, d.month, d.year)
+    jd = jd_from_date(d.day, d.month, d.year)
+    chi = (jd + 1) % 12
+    can = (jd + 9) % 10
+    ten_sao, tot = SAO[(chi - ((lm - 1) % 6) * 2) % 12]
+    kd = math.degrees(sun_longitude_rad(jd + 1))
+    chi_thang_tiet = (2 + int(((kd - 315) % 360) // 30)) % 12      # tháng theo tiết khí (Dần = Lập xuân)
+    return {"sao": ten_sao, "hoang_dao": tot, "truc": TRUC[(chi - chi_thang_tiet) % 12],
+            "xung": CHI[(chi + 6) % 12], "hy_than": HY_THAN[can % 5]}
+
+
+def dem_tet(d: date):
+    """(số ngày tới mùng 1 Tết kế tiếp, tên năm âm lịch đó) hoặc (0, ...) nếu đang trong 3 ngày Tết."""
+    ld, lm, ly, leap, _ = solar_to_lunar(d.day, d.month, d.year)
+    if lm == 1 and ld <= 3 and not leap:
+        return 0, ld, f"{CAN[(ly + 6) % 10]} {CHI[(ly + 8) % 12]}"
+    for k in range(1, 400):
+        n = d + timedelta(days=k)
+        a, b, y, lp, _ = solar_to_lunar(n.day, n.month, n.year)
+        if a == 1 and b == 1 and not lp:
+            return k, 1, f"{CAN[(y + 6) % 10]} {CHI[(y + 8) % 12]}"
+    return None, None, ""
+
+
+# ---------------- THỊ TRƯỜNG ----------------
+def _get(url, timeout=20):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (kindle-screensaver)"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", errors="replace")
+
+
+def lay_thi_truong():
+    import re, html as _html
+    kq = {}
+    try:   # Tỷ giá Vietcombank
+        x = _get("https://portal.vietcombank.com.vn/Usercontrols/TVPortal.TyGia/pXML.aspx")
+        m = re.search(r'CurrencyCode="USD"[^>]*Buy="([\d,.]+)"[^>]*Sell="([\d,.]+)"', x)
+        if m:
+            kq["usd"] = (float(m.group(1).replace(",", "")), float(m.group(2).replace(",", "")))
+    except Exception as e:
+        print("Tỷ giá lỗi:", e)
+    try:   # VN-Index (SSI iBoard)
+        j = json.loads(_get("https://iboard-query.ssi.com.vn/exchange-index/VNINDEX?hasHistory=false"))["data"]
+        kq["vni"] = (float(j["indexValue"]), float(j["indexValue"]) - float(j["prevIndexValue"]),
+                     (float(j["indexValue"]) / float(j["prevIndexValue"]) - 1) * 100)
+    except Exception as e:
+        print("VN-Index lỗi:", e)
+    try:   # Bitcoin (CoinGecko)
+        j = json.loads(_get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin"
+                            "&vs_currencies=usd&include_24hr_change=true"))["bitcoin"]
+        kq["btc"] = (float(j["usd"]), float(j.get("usd_24h_change") or 0))
+    except Exception as e:
+        print("Bitcoin lỗi:", e)
+    try:   # Giá xăng (giaxanghomnay.com tổng hợp giá Petrolimex/PVOIL), vùng 1
+        s = _get("https://giaxanghomnay.com/")
+        t = re.sub(r"<script.*?</script>", " ", s, flags=re.S)
+        t = re.sub(r"<[^>]+>", " | ", t)
+        t = re.sub(r"(\s*\|\s*)+", " | ", _html.unescape(t))
+        m = re.search(r"RON 95 Mức \d \| [^|]* \| ([-+]?[\d,]+) \| ([\d,]+) \|", t)
+        if m:
+            kq["xang"] = (float(m.group(2).replace(",", "")), float(m.group(1).replace(",", "")))
+    except Exception as e:
+        print("Giá xăng lỗi:", e)
+    print("Thị trường:", kq)
+    return kq
+
+
+def so_vn(v, le=0):
+    """Định dạng số kiểu Việt Nam: 25790 -> '25.790', 1743.07 -> '1.743,07'."""
+    s = f"{v:,.{le}f}"
+    return s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def tam_giac(dr, x, y, len_tren, co=9):
+    if len_tren:
+        dr.polygon([(x - co, y + co * 0.8), (x + co, y + co * 0.8), (x, y - co)], fill=DEN)
+    else:
+        dr.polygon([(x - co, y - co * 0.8), (x + co, y - co * 0.8), (x, y + co)], fill=DEN)
+
+
+# ---------------- VẼ ----------------
+def ve(hom_nay: date, thoi_tiet, vang=None, thi_truong=None):
     img = Image.new("L", (RONG, CAO), TRANG)
     dr = ImageDraw.Draw(img)
     L, R = 80, RONG - 80
     am = thong_tin_am(hom_nay)
+    tx = tot_xau(hom_nay)
 
     # ---- Đầu trang ----
     chu(dr, (L, 58), THU[hom_nay.weekday()].upper(), font(F_BOLD, 48))
     chu(dr, (R, 60), f"THÁNG {hom_nay.month} · {hom_nay.year}", font(F_SEMI, 40), anchor="ra")
     ke_ngang(dr, 130, w=4)
 
-    # ---- Ngày dương khổng lồ ----
+    # ---- Ngày dương + tuần (trái) + đếm ngược Tết (phải) ----
     le = LE_DUONG.get((hom_nay.day, hom_nay.month)) or \
         (None if am["nhuan"] else LE_AM.get((am["ngay"], am["thang"])))
     if not le:
         le = "Mùng 1" if am["ngay"] == 1 else ("Ngày Rằm" if am["ngay"] == 15 else None)
-    chu(dr, (RONG // 2, 232 if le else 272), f"{hom_nay.day:02d}", font(F_LIGHT, 250), anchor="mm")
-    if le:
-        f = font(F_SEMI, 34)
-        tw = dr.textlength(le, font=f)
-        x0 = RONG // 2 - tw / 2 - 26
-        dr.rounded_rectangle([x0, 364, RONG - x0, 412], radius=25, fill=DEN)
-        chu(dr, (RONG // 2, 388), le, f, fill=TRANG, anchor="mm")
-    ke_ngang(dr, 428, fill=XAM, w=2)
+    cy_so = 240 if le else 268
+    chu(dr, (RONG // 2, cy_so), f"{hom_nay.day:02d}", font(F_LIGHT, 220), anchor="mm")
 
-    # ---- Âm lịch ----
-    chu(dr, (L, 448), "ÂM LỊCH", font(F_BOLD, 26), fill=XAM)
-    chu(dr, (L - 6, 474), f"{am['ngay']}/{am['thang']}", font(F_SEMI, 140))
+    tuan = hom_nay.isocalendar()[1]
+    tong_tuan = date(hom_nay.year, 12, 28).isocalendar()[1]
+    chu(dr, (L, cy_so - 40), "TUẦN", font(F_BOLD, 24), fill=XAM, anchor="ls")
+    chu(dr, (L - 4, cy_so + 34), str(tuan), font(F_SEMI, 72), anchor="ls")
+    w_tuan = dr.textlength(str(tuan), font=font(F_SEMI, 72))
+    chu(dr, (L + w_tuan + 6, cy_so + 34), f"/{tong_tuan}", font(F_REG, 28), fill=XAM, anchor="ls")
+
+    so_ngay_tet, mung, nam_tet = dem_tet(hom_nay)
+    if so_ngay_tet == 0:
+        chu(dr, (R, cy_so - 40), f"TẾT {nam_tet.upper()}", font(F_BOLD, 24), fill=XAM, anchor="rs")
+        chu(dr, (R, cy_so + 34), f"Mùng {mung}", font(F_SEMI, 60), anchor="rs")
+    elif so_ngay_tet:
+        chu(dr, (R, cy_so - 40), f"TẾT {nam_tet.upper()}", font(F_BOLD, 24), fill=XAM, anchor="rs")
+        f_so, f_ng = font(F_SEMI, 72), font(F_REG, 28)
+        w_ng = dr.textlength(" ngày", font=f_ng)
+        chu(dr, (R, cy_so + 34), " ngày", f_ng, fill=XAM, anchor="rs")
+        chu(dr, (R - w_ng, cy_so + 34), str(so_ngay_tet), f_so, anchor="rs")
+        chu(dr, (R, cy_so + 64), "nữa", f_ng, fill=XAM, anchor="rs")
+
+    if le:
+        f = font(F_SEMI, 32)
+        tw = dr.textlength(le, font=f)
+        x0 = RONG // 2 - tw / 2 - 24
+        dr.rounded_rectangle([x0, 350, RONG - x0, 396], radius=23, fill=DEN)
+        chu(dr, (RONG // 2, 373), le, f, fill=TRANG, anchor="mm")
+    ke_ngang(dr, 418, fill=XAM, w=2)
+
+    # ---- Âm lịch + ngày tốt xấu ----
+    chu(dr, (L, 436), "ÂM LỊCH", font(F_BOLD, 26), fill=XAM)
+    chu(dr, (L - 6, 458), f"{am['ngay']}/{am['thang']}", font(F_SEMI, 130))
     ten_thang = f"Tháng {THANG_AM[am['thang'] - 1]}{' (nhuận)' if am['nhuan'] else ''}"
     ten_thang += f" · {'Đủ' if am['so_ngay'] == 30 else 'Thiếu'}"
-    chu(dr, (L, 652), ten_thang, font(F_REG, 32), fill=XAM_DAM)
+    chu(dr, (L, 622), ten_thang, font(F_REG, 30), fill=XAM_DAM)
+    # nhãn hoàng đạo / hắc đạo
+    f_nhan = font(F_SEMI, 27)
+    nhan = f"{'HOÀNG ĐẠO' if tx['hoang_dao'] else 'HẮC ĐẠO'} · {tx['sao']}"
+    wn = dr.textlength(nhan, font=f_nhan)
+    if tx["hoang_dao"]:
+        dr.rounded_rectangle([L, 664, L + wn + 36, 706], radius=21, fill=DEN)
+        chu(dr, (L + 18, 685), nhan, f_nhan, fill=TRANG, anchor="lm")
+    else:
+        dr.rounded_rectangle([L, 664, L + wn + 36, 706], radius=21, outline=DEN, width=3)
+        chu(dr, (L + 18, 685), nhan, f_nhan, fill=DEN, anchor="lm")
+
     cot = 690
-    f_nhan, f_gt = font(F_REG, 28), font(F_SEMI, 38)
-    for i, (nhan, gt) in enumerate([("Ngày", am["can_chi_ngay"]), ("Tháng", am["can_chi_thang"]),
-                                     ("Năm", am["can_chi_nam"]), ("Tiết", am["tiet_khi"])]):
-        y = 462 + i * 56
-        chu(dr, (cot, y + 6), nhan, f_nhan, fill=XAM)
-        chu(dr, (cot + 110, y), gt, f_gt)
-    f_hd = font(F_REG, 28)
-    chu(dr, (L, 712), "Giờ hoàng đạo:  ", f_hd, fill=XAM)
-    chu(dr, (L + dr.textlength("Giờ hoàng đạo:  ", font=f_hd), 710), "  ·  ".join(am["gio_hd"]),
-        font(F_SEMI, 29))
-    ke_ngang(dr, 768, fill=XAM, w=2)
+    f_l, f_v = font(F_REG, 26), font(F_SEMI, 34)
+    for i, (k, v) in enumerate([("Ngày", am["can_chi_ngay"]), ("Tháng", am["can_chi_thang"]),
+                                ("Năm", am["can_chi_nam"]), ("Tiết", am["tiet_khi"]),
+                                ("Trực", tx["truc"])]):
+        y = 446 + i * 50
+        chu(dr, (cot, y + 6), k, f_l, fill=XAM)
+        chu(dr, (cot + 100, y), v, f_v)
+
+    f_g = font(F_REG, 27)
+    chu(dr, (L, 728), f"Kỵ tuổi {tx['xung']}  ·  Xuất hành hướng {tx['hy_than']} (Hỷ thần)", f_g, fill=XAM_DAM)
+    chu(dr, (L, 764), "Giờ hoàng đạo:  ", f_g, fill=XAM)
+    chu(dr, (L + dr.textlength("Giờ hoàng đạo:  ", font=f_g), 762), "  ·  ".join(am["gio_hd"]),
+        font(F_SEMI, 28))
+    ke_ngang(dr, 812, fill=XAM, w=2)
 
     # ---- Thời tiết ----
-    chu(dr, (L, 788), f"THỜI TIẾT · {THANH_PHO.upper()}", font(F_BOLD, 26), fill=XAM)
+    chu(dr, (L, 830), f"THỜI TIẾT · {THANH_PHO.upper()}", font(F_BOLD, 26), fill=XAM)
     d = thoi_tiet["daily"] if thoi_tiet else None
     i0 = d["time"].index(hom_nay.isoformat()) if d and hom_nay.isoformat() in d["time"] else None
     if thoi_tiet and i0 is not None and len(d["time"]) >= i0 + 5:
         x2 = 690
-        f_s = font(F_REG, 30)
-        if i0 == 0:   # ảnh hôm nay: số đo hiện tại
+        f_s = font(F_REG, 28)
+        if i0 == 0:
             c = thoi_tiet["current"]
             mo_ta, loai = mo_ta_thoi_tiet(c["weather_code"])
-            ve_icon(dr, loai, L + 85, 885, 72, ngay=bool(c.get("is_day", 1)))
-            chu(dr, (L + 190, 885), f"{round(c['temperature_2m'])}°", font(F_LIGHT, 130), anchor="lm")
-            chu(dr, (x2, 818), mo_ta, font(F_SEMI, 40))
-            chu(dr, (x2, 872), f"Cảm giác  {round(c['apparent_temperature'])}°", f_s, fill=XAM_DAM)
-            chu(dr, (x2, 914), f"Độ ẩm  {c['relative_humidity_2m']}%  ·  Gió  {round(c['wind_speed_10m'])} km/h",
+            ve_icon(dr, loai, L + 80, 918, 64, ngay=bool(c.get("is_day", 1)))
+            chu(dr, (L + 175, 918), f"{round(c['temperature_2m'])}°", font(F_LIGHT, 116), anchor="lm")
+            chu(dr, (x2, 858), mo_ta, font(F_SEMI, 38))
+            chu(dr, (x2, 908), f"Cảm giác  {round(c['apparent_temperature'])}°", f_s, fill=XAM_DAM)
+            chu(dr, (x2, 946), f"Độ ẩm  {c['relative_humidity_2m']}%  ·  Gió  {round(c['wind_speed_10m'])} km/h",
                 f_s, fill=XAM_DAM)
-        else:         # ảnh làm sẵn cho ngày sau: dự báo của chính ngày đó
+        else:
             mo_ta, loai = mo_ta_thoi_tiet(d["weather_code"][i0])
-            ve_icon(dr, loai, L + 85, 885, 72)
-            chu(dr, (L + 190, 885), f"{round(d['temperature_2m_max'][i0])}°", font(F_LIGHT, 130), anchor="lm")
-            chu(dr, (x2, 818), f"{mo_ta} (dự báo)", font(F_SEMI, 40))
-            chu(dr, (x2, 872), f"Thấp nhất  {round(d['temperature_2m_min'][i0])}°", f_s, fill=XAM_DAM)
+            ve_icon(dr, loai, L + 80, 918, 64)
+            chu(dr, (L + 175, 918), f"{round(d['temperature_2m_max'][i0])}°", font(F_LIGHT, 116), anchor="lm")
+            chu(dr, (x2, 858), f"{mo_ta} (dự báo)", font(F_SEMI, 38))
+            chu(dr, (x2, 908), f"Thấp nhất  {round(d['temperature_2m_min'][i0])}°", f_s, fill=XAM_DAM)
             mua0 = d.get("precipitation_probability_max", [None] * 16)[i0]
-            chu(dr, (x2, 914), f"Khả năng mưa  {mua0 if mua0 is not None else '—'}%", f_s, fill=XAM_DAM)
+            chu(dr, (x2, 946), f"Khả năng mưa  {mua0 if mua0 is not None else '—'}%", f_s, fill=XAM_DAM)
         o = (R - L) / 4
         for i in range(i0 + 1, i0 + 5):
             ngay_dt = datetime.strptime(d["time"][i], "%Y-%m-%d").date()
             cx = L + o * (i - i0 - 1) + o / 2
             ten = "Mai" if i == i0 + 1 else THU_NGAN[ngay_dt.weekday()]
-            chu(dr, (cx, 990), ten, font(F_SEMI, 30), anchor="mm")
-            ve_icon(dr, mo_ta_thoi_tiet(d["weather_code"][i])[1], cx, 1036, 32)
-            chu(dr, (cx, 1088), f"{round(d['temperature_2m_max'][i])}°", font(F_SEMI, 32), anchor="rm")
-            chu(dr, (cx + 8, 1088), f" {round(d['temperature_2m_min'][i])}°", font(F_REG, 32),
+            chu(dr, (cx, 1010), ten, font(F_SEMI, 28), anchor="mm")
+            ve_icon(dr, mo_ta_thoi_tiet(d["weather_code"][i])[1], cx, 1050, 28)
+            chu(dr, (cx, 1094), f"{round(d['temperature_2m_max'][i])}°", font(F_SEMI, 30), anchor="rm")
+            chu(dr, (cx + 8, 1094), f" {round(d['temperature_2m_min'][i])}°", font(F_REG, 30),
                 fill=XAM, anchor="lm")
             mua = d.get("precipitation_probability_max", [None] * 16)[i]
             if mua:
-                chu(dr, (cx, 1120), f"mưa {mua}%", font(F_REG, 22), fill=XAM, anchor="mm")
+                chu(dr, (cx, 1124), f"mưa {mua}%", font(F_REG, 21), fill=XAM, anchor="mm")
             if i < i0 + 4:
-                dr.line([L + o * (i - i0), 972, L + o * (i - i0), 1128], fill=XAM_NHAT, width=2)
+                dr.line([L + o * (i - i0), 994, L + o * (i - i0), 1132], fill=XAM_NHAT, width=2)
     else:
-        chu(dr, (L, 870), "Chưa có dữ liệu thời tiết", font(F_REG, 38), fill=XAM)
-    ke_ngang(dr, 1145, fill=XAM, w=2)
+        chu(dr, (L, 900), "Chưa có dữ liệu thời tiết", font(F_REG, 36), fill=XAM)
+    ke_ngang(dr, 1146, fill=XAM, w=2)
 
     # ---- Giá vàng ----
-    chu(dr, (L, 1165), "GIÁ VÀNG · TRIỆU ĐỒNG/LƯỢNG", font(F_BOLD, 26), fill=XAM)
+    chu(dr, (L, 1156), "GIÁ VÀNG · TRIỆU ĐỒNG/LƯỢNG", font(F_BOLD, 26), fill=XAM)
     if vang:
         nguon = f"PNJ · {vang['gio'][:16]}" + (" (cũ)" if vang["cu"] else "")
-        chu(dr, (R, 1167), nguon, font(F_REG, 22), fill=XAM, anchor="ra")
-        f_ten, f_nh, f_so, f_ch = font(F_REG, 30), font(F_REG, 24), font(F_SEMI, 40), font(F_SEMI, 26)
+        chu(dr, (R, 1158), nguon, font(F_REG, 22), fill=XAM, anchor="ra")
+        f_ten, f_nh, f_so, f_ch = font(F_REG, 28), font(F_REG, 23), font(F_SEMI, 36), font(F_SEMI, 25)
         for j, (ma, ten) in enumerate(LOAI_VANG):
             if ma not in vang["gia"]:
                 continue
             mua, ban = vang["gia"][ma]
-            cy = 1224 + j * 52
+            cy = 1206 + j * 42
             chu(dr, (L, cy), ten, f_ten, fill=XAM_DAM, anchor="lm")
             for nhan, v, x in [("Mua", mua, 620), ("Bán", ban, 860)]:
                 chu(dr, (x - 8, cy + 3), nhan, f_nh, fill=XAM, anchor="rm")
                 chu(dr, (x + 2, cy), trieu_luong(v), f_so, anchor="lm")
-            # tăng/giảm giá bán so với ngày trước
             if vang["truoc"] and ma in vang["truoc"]:
                 ch = ban - vang["truoc"][ma][1]
                 if abs(ch) < 1e-6:
@@ -441,30 +568,50 @@ def ve(hom_nay: date, thoi_tiet, vang=None):
                 else:
                     s = trieu_luong(abs(ch))
                     chu(dr, (R, cy + 2), s, f_ch, anchor="rm")
-                    ax = R - dr.textlength(s, font=f_ch) - 20
-                    if ch > 0:
-                        dr.polygon([(ax - 10, cy + 8), (ax + 10, cy + 8), (ax, cy - 9)], fill=DEN)
-                    else:
-                        dr.polygon([(ax - 10, cy - 8), (ax + 10, cy - 8), (ax, cy + 9)], fill=DEN)
+                    tam_giac(dr, R - dr.textlength(s, font=f_ch) - 18, cy, ch > 0)
     else:
-        chu(dr, (L, 1240), "Chưa có dữ liệu giá vàng", font(F_REG, 32), fill=XAM)
-    ke_ngang(dr, 1314, fill=XAM, w=2)
+        chu(dr, (L, 1230), "Chưa có dữ liệu giá vàng", font(F_REG, 30), fill=XAM)
+
+    # ---- Tỷ giá · xăng · VN-Index · Bitcoin ----
+    tt = thi_truong or {}
+    o = (R - L) / 4
+    f_lb, f_gt, f_bd = font(F_BOLD, 19), font(F_SEMI, 29), font(F_REG, 21)
+    o_tt = [
+        ("USD · VCB BÁN", f"{so_vn(tt['usd'][1])}" if "usd" in tt else "—", None),
+        ("XĂNG RON 95", f"{so_vn(tt['xang'][0])}đ" if "xang" in tt else "—",
+         (tt["xang"][1], f"{so_vn(abs(tt['xang'][1]))}đ") if "xang" in tt and tt["xang"][1] else None),
+        ("VN-INDEX", so_vn(tt["vni"][0], 2) if "vni" in tt else "—",
+         (tt["vni"][1], f"{so_vn(abs(tt['vni'][2]), 2)}%") if "vni" in tt else None),
+        ("BITCOIN", f"{so_vn(tt['btc'][0])}$" if "btc" in tt else "—",
+         (tt["btc"][1], f"{so_vn(abs(tt['btc'][1]), 1)}%") if "btc" in tt else None),
+    ]
+    for k, (nhan, gt, bd) in enumerate(o_tt):
+        x = L + o * k
+        chu(dr, (x, 1272), nhan, f_lb, fill=XAM)
+        chu(dr, (x, 1314), gt, f_gt, anchor="lm")
+        if bd:
+            xb = x + dr.textlength(gt, font=f_gt) + 20
+            tam_giac(dr, xb, 1315, bd[0] > 0, co=7)
+            chu(dr, (xb + 11, 1316), bd[1], f_bd, fill=XAM_DAM, anchor="lm")
+        if k:
+            dr.line([x - 14, 1272, x - 14, 1332], fill=XAM_NHAT, width=2)
+    ke_ngang(dr, 1344, fill=XAM, w=2)
 
     # ---- Lịch tháng mini ----
-    top = 1326
+    top = 1352
     o = (R - L) / 7
     for i, t in enumerate(THU_NGAN):
         chu(dr, (L + o * i + o / 2, top + 14), t, font(F_BOLD, 21), fill=XAM, anchor="mm")
     dau_thang = hom_nay.replace(day=1)
     so_ngay = ((dau_thang + timedelta(days=32)).replace(day=1) - dau_thang).days
     so_hang = math.ceil((dau_thang.weekday() + so_ngay) / 7)
-    h = min(52, (CAO - 40 - (top + 32)) / so_hang)
-    f_d, f_db, f_a = font(F_SEMI, 26), font(F_BOLD, 26), font(F_REG, 17)
+    h = min(50, (CAO - 38 - (top + 30)) / so_hang)
+    f_d, f_db, f_a = font(F_SEMI, 25), font(F_BOLD, 25), font(F_REG, 17)
     for n in range(1, so_ngay + 1):
         dd = dau_thang.replace(day=n)
         idx = dau_thang.weekday() + n - 1
         cx = L + o * (idx % 7) + o / 2
-        cy = top + 32 + h * (idx // 7) + h / 2
+        cy = top + 30 + h * (idx // 7) + h / 2
         ld, lm, *_ = solar_to_lunar(n, dd.month, dd.year)
         am_txt = f"{ld}/{lm}" if ld == 1 else str(ld)
         hom = dd == hom_nay
@@ -475,7 +622,7 @@ def ve(hom_nay: date, thoi_tiet, vang=None):
         chu(dr, (cx - 8, cy), str(n), f_db if hom else f_d, fill=mau, anchor="rm")
         chu(dr, (cx + 2, cy + 4), am_txt, f_a, fill=TRANG if hom else XAM, anchor="lm")
 
-    chu(dr, (R, CAO - 16), f"Cập nhật {datetime.now(GIO_VN):%H:%M %d/%m}", font(F_REG, 20),
+    chu(dr, (R, CAO - 14), f"Cập nhật {datetime.now(GIO_VN):%H:%M %d/%m}", font(F_REG, 19),
         fill=XAM, anchor="rb")
     return img
 
@@ -483,18 +630,18 @@ def ve(hom_nay: date, thoi_tiet, vang=None):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     d = datetime.strptime(sys.argv[1], "%Y-%m-%d").date() if len(sys.argv) > 1 else datetime.now(GIO_VN).date()
-    tt, vang = lay_thoi_tiet(), lay_gia_vang()
-    img = ve(d, tt, vang)
+    tt, vang, thi_truong = lay_thoi_tiet(), lay_gia_vang(), lay_thi_truong()
+    img = ve(d, tt, vang, thi_truong)
     img.save(FILE_RA, optimize=True)
     print("Đã lưu:", FILE_RA)
-    # Làm sẵn ảnh cho mấy ngày tới: Kindle tự đổi sang khi qua ngày mới, kể cả lúc không có mạng
     so_ngay = int(os.environ.get("SO_NGAY_LAM_SAN", "0"))
     thu_muc = os.path.dirname(os.path.abspath(FILE_RA))
     for k in range(so_ngay):
         n = d + timedelta(days=k)
         p = os.path.join(thu_muc, f"bg-{n.isoformat()}.png")
-        ve(n, tt, vang).save(p, optimize=True)
+        ve(n, tt, vang, thi_truong).save(p, optimize=True)
         print("Đã lưu:", p)
+
 
 if __name__ == "__main__":
     main()
