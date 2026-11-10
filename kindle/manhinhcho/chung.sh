@@ -21,7 +21,7 @@ cfg() {   # cfg TEN MAC_DINH MAU(regex)
 doc_cau_hinh() {
     [ -f $D/cauhinh.txt ] || return 0      # che do USB: giu gia tri cu
     URL_ANH=$(cfg URL_ANH "https://phucvm69-dev.github.io/kindle-manhinhcho/bg.png" 'https://[A-Za-z0-9.-]+/[A-Za-z0-9._/~-]*')
-    CHU_KY=$(cfg CHU_KY 7200 '[0-9]{3,6}')
+    CHU_KY=$(cfg CHU_KY 21600 '[0-9]{3,6}')
     GIO_NGU=$(cfg GIO_NGU 23 '[0-9]|1[0-9]|2[0-3]')
     GIO_THUC=$(cfg GIO_THUC 6 '[0-9]|1[0-9]|2[0-3]')
     REPO_SACH=$(cfg REPO_SACH "phucvm69-dev/kindle-sach" '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
@@ -46,15 +46,30 @@ tai() {   # tai URL FILE_RA [them tham so curl...]  -> in ma HTTP
 
 # --- Wi-Fi: bat khi can, tra ve trang thai cu sau khi xong ---
 WIFI_TRUOC=""
+cho_ket_noi() {   # cho toi da $1 giay, giu may khong ngu trong luc cho
+    j=0
+    while [ $j -lt $1 ]; do
+        [ "$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ] && return 0
+        [ $((j % 15)) -eq 0 ] && lipc-set-prop com.lab126.powerd deferSuspend 120 >/dev/null 2>&1
+        sleep 1; j=$((j + 1))
+    done
+    return 1
+}
 bat_wifi() {
     WIFI_TRUOC=$(lipc-get-prop com.lab126.cmd wirelessEnable 2>/dev/null)
+    t0=$(date +%s)
     [ "$WIFI_TRUOC" = "0" ] && lipc-set-prop com.lab126.cmd wirelessEnable 1
-    i=0
-    while [ $i -lt 40 ]; do
-        [ "$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ] && { sleep 2; return 0; }
-        sleep 1; i=$((i + 1))
-    done
-    log "wifi khong ket noi duoc"
+    if cho_ket_noi 30; then sleep 2; log "wifi: OK ($(( $(date +%s) - t0 ))s)"; return 0; fi
+    s1=$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)
+    # cach 2: tat roi bat lai Wi-Fi de ep ket noi lai
+    lipc-set-prop com.lab126.cmd wirelessEnable 0; sleep 3
+    lipc-set-prop com.lab126.cmd wirelessEnable 1
+    if cho_ket_noi 45; then
+        sleep 2; log "wifi: OK sau khi bat lai ($(( $(date +%s) - t0 ))s, truoc do $s1)"; return 0
+    fi
+    log "wifi khong ket noi duoc (wifi truoc=$WIFI_TRUOC, $s1 -> $(lipc-get-prop com.lab126.wifid cmState 2>/dev/null), $(lipc-get-prop com.lab126.powerd status 2>/dev/null | head -1))"
+    # ghi ten cac thuoc tinh cua dich vu Wi-Fi mot lan de chan doan (chi ten, khong co mat khau)
+    [ -f $D/wifid_probe.txt ] || lipc-probe com.lab126.wifid > $D/wifid_probe.txt 2>&1
     return 1
 }
 tra_wifi() { [ "$WIFI_TRUOC" = "0" ] && lipc-set-prop com.lab126.cmd wirelessEnable 0; }
@@ -63,9 +78,9 @@ tai_anh() {
     ma=$(tai "$URL_ANH?t=$(date +%s)" $IMG.tmp --max-filesize 5000000)
     # chi nhan dung file PNG (8 byte dau)
     if [ "$ma" = "200" ] && [ "$(head -c 8 $IMG.tmp 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
-        mv $IMG.tmp $IMG; log "anh: OK"
+        mv $IMG.tmp $IMG; date +%s > $R/last; log "anh: OK"; return 0
     else
-        rm -f $IMG.tmp; log "anh: LOI tai (HTTP $ma)"
+        rm -f $IMG.tmp; log "anh: LOI tai (HTTP $ma)"; return 1
     fi
 }
 
@@ -130,8 +145,8 @@ dong_bo_sach() {
 
 # Mot lan cap nhat day du: wifi -> anh -> sach -> tra wifi
 cap_nhat() {
-    date +%s > $R/last
-    lipc-set-prop com.lab126.powerd deferSuspend 90 >/dev/null 2>&1
+    date +%s > $R/last_thu        # thoi diem THU (thanh cong ghi rieng vao last)
+    lipc-set-prop com.lab126.powerd deferSuspend 120 >/dev/null 2>&1
     if bat_wifi; then
         tai_anh
         dong_bo_sach

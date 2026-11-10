@@ -2,7 +2,7 @@ name: Cap nhat man hinh cho
 
 on:
   schedule:
-    - cron: "7 * * * *"      # mỗi giờ, phút thứ 7 (giờ UTC)
+    - cron: "*/15 * * * *"   # 15 phút/lần: GitHub hay bỏ bớt lượt chạy theo lịch, chạy dày để luôn có ảnh mới
   workflow_dispatch:          # cho phép bấm chạy tay
 
 permissions:

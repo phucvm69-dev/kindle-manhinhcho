@@ -30,17 +30,25 @@ gan_man_hinh_khoa() {
 
 go_man_hinh_khoa() { umount $SS_GOC 2>/dev/null && log "tra lai man hinh khoa goc"; }
 
-tuoi() { echo $(( $(date +%s) - $(cat $R/last 2>/dev/null || echo 0) )); }
+tuoi() { echo $(( $(date +%s) - $(cat $R/last 2>/dev/null || echo 0) )); }          # tu lan tai anh THANH CONG
+tuoi_thu() { echo $(( $(date +%s) - $(cat $R/last_thu 2>/dev/null || echo 0) )); }  # tu lan THU (bat wifi) gan nhat
+tuoi_sach() { echo $(( $(date +%s) - $(cat $R/last_sach 2>/dev/null || echo 0) )); }
+den_han() { [ $(tuoi) -ge $(( CHU_KY - 300 )) ]; }                                   # da den gio cap nhat anh
+co_mang() { [ "$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ]; }
 
 la_ban_dem() {
     if [ $GIO_NGU -gt $GIO_THUC ]; then [ $1 -ge $GIO_NGU ] || [ $1 -lt $GIO_THUC ]
     else [ $1 -ge $GIO_NGU ] && [ $1 -lt $GIO_THUC ]; fi
 }
 
+# So giay toi lan tu thuc day ke tiep:
+#  - binh thuong: CHU_KY tinh tu lan tai THANH CONG gan nhat
+#  - neu dang no (lan truoc khong co mang): thu lai sau CHU_KY tinh tu lan thu gan nhat
+#  - khong thuc day ban dem
 lan_toi() {
     h=$(date +%H); m=$(date +%M); s=$(date +%S)
     giay=$(( ${h#0} * 3600 + ${m#0} * 60 + ${s#0} ))
-    con=$(( CHU_KY - $(tuoi) ))
+    if den_han; then con=$(( CHU_KY - $(tuoi_thu) )); else con=$(( CHU_KY - $(tuoi) )); fi
     [ $con -lt 300 ] && con=300
     gio_toi=$(( ((giay + con) % 86400) / 3600 ))
     if la_ban_dem $gio_toi || la_ban_dem ${h#0}; then
@@ -49,14 +57,43 @@ lan_toi() {
     echo $con
 }
 
+# Tranh thu khi DANG CO MANG (khong tu bat wifi): tai anh neu den han, dong bo sach neu lau chua lam
+tranh_thu() {
+    co_mang || return 1
+    mkdir $R/dang_cap_nhat 2>/dev/null || return 0
+    if den_han; then
+        log "co mang tro lai, tai bu"
+        tai_anh && dong_bo_sach
+        dang_cho && ve
+    elif [ $(tuoi_sach) -ge ${DONG_BO_KHI_MO:-1800} ]; then
+        dong_bo_sach
+    fi
+    rmdir $R/dang_cap_nhat
+    return 0
+}
+
+# Khi may dang mo (khong o man hinh khoa): cu 20 giay xem co mang chua, co la tai bu ngay
+canh_mang() {
+    mkdir $R/canh 2>/dev/null || return 0
+    k=0
+    while [ $k -lt 540 ]; do                      # toi da ~3 gio
+        dang_cho && break
+        den_han || [ $(tuoi_sach) -ge ${DONG_BO_KHI_MO:-1800} ] || break
+        co_mang && { tranh_thu; break; }
+        sleep 20; k=$((k + 1))
+    done
+    rmdir $R/canh
+}
+
 WPID=""
 dung() { [ -n "$WPID" ] && kill $WPID 2>/dev/null; go_man_hinh_khoa; rm -f $R/pid; exit 0; }
 trap dung TERM INT
 
 log "bat dau (pid $$), chu ky ${CHU_KY}s, nghi ${GIO_NGU}h-${GIO_THUC}h"
 gan_man_hinh_khoa
+rmdir $R/canh 2>/dev/null
+dang_cho || canh_mang &
 EVF=/tmp/manhinhcho.ev
-tuoi_sach() { echo $(( $(date +%s) - $(cat $R/last_sach 2>/dev/null || echo 0) )); }
 
 while true; do
     doc_cau_hinh                          # doc lai cau hinh (chi lay gia tri, co kiem tra)
@@ -69,28 +106,23 @@ while true; do
     case "$EV" in
         goingToScreenSaver*)
             log "vao man hinh cho"
-            # chay nen de vong lap van bat duoc readyToSuspend (hen gio thuc)
             ( if [ "$VE_DE" = "1" ]; then sleep 4; dang_cho && ve; fi
-              if [ $(tuoi) -ge $CHU_KY ] && mkdir $R/dang_cap_nhat 2>/dev/null; then
-                  cap_nhat; dang_cho && ve; rmdir $R/dang_cap_nhat
-              fi ) &
+              den_han && tranh_thu ) &          # dang co mang luc khoa may thi tai bu luon
             ;;
         outOfScreenSaver*)
-            # mo khoa may: neu wifi dang bat san va lau chua dong bo -> dong bo sach (khong ton them pin)
-            if [ "$(lipc-get-prop com.lab126.cmd wirelessEnable 2>/dev/null)" = "1" ] && \
-               [ $(tuoi_sach) -ge ${DONG_BO_KHI_MO:-1800} ]; then
-                ( sleep 5
-                  [ "$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ] && dong_bo_sach ) &
-            fi
+            canh_mang &                          # mo may: co mang la tai bu ngay
             ;;
         readyToSuspend*)
             con=$(lan_toi)
             lipc-set-prop -i com.lab126.powerd rtcWakeup $con >/dev/null 2>&1
-            log "ngu, hen thuc sau $((con / 60)) phut"
+            [ "$((con / 60))" != "$DA_LOG" ] && log "ngu, hen thuc sau $((con / 60)) phut"
+            DA_LOG=$((con / 60))
             ;;
         wakeupFromSuspend*)
             log "thuc day"
-            if dang_cho && [ $(tuoi) -ge $(( CHU_KY - 600 )) ] && mkdir $R/dang_cap_nhat 2>/dev/null; then
+            DA_LOG=""
+            # den gio theo lich: tu bat wifi de tai (that bai thi cho lan co mang tiep theo)
+            if dang_cho && den_han && [ $(tuoi_thu) -ge 1200 ] && mkdir $R/dang_cap_nhat 2>/dev/null; then
                 ( cap_nhat; dang_cho && ve; rmdir $R/dang_cap_nhat ) &
             fi
             ;;
