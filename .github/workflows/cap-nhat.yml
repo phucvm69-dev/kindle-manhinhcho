@@ -2,8 +2,8 @@ name: Cap nhat man hinh cho
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # 15 phút/lần: GitHub hay bỏ bớt lượt chạy theo lịch, chạy dày để luôn có ảnh mới
-  workflow_dispatch:          # cho phép bấm chạy tay
+    - cron: "17 * * * *"     # du phong; nhip chinh do workflow "nhip.yml" bam chay 30 phut/lan
+  workflow_dispatch:          # cho phép bấm chạy tay (và để nhip.yml gọi)
 
 permissions:
   contents: read

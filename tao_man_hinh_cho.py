@@ -183,7 +183,7 @@ def lay_thoi_tiet():
            "weather_code,wind_speed_10m,is_day"
            "&daily=weather_code,temperature_2m_max,temperature_2m_min,"
            "precipitation_probability_max"
-           "&timezone=Asia%2FHo_Chi_Minh&forecast_days=5")
+           "&timezone=Asia%2FHo_Chi_Minh&forecast_days=8")
     try:
         with urllib.request.urlopen(url, timeout=20) as r:
             return json.loads(r.read().decode("utf-8"))
@@ -377,32 +377,43 @@ def ve(hom_nay: date, thoi_tiet, vang=None):
 
     # ---- Thời tiết ----
     chu(dr, (L, 788), f"THỜI TIẾT · {THANH_PHO.upper()}", font(F_BOLD, 26), fill=XAM)
-    if thoi_tiet:
-        c, d = thoi_tiet["current"], thoi_tiet["daily"]
-        mo_ta, loai = mo_ta_thoi_tiet(c["weather_code"])
-        ve_icon(dr, loai, L + 85, 885, 72, ngay=bool(c.get("is_day", 1)))
-        chu(dr, (L + 190, 885), f"{round(c['temperature_2m'])}°", font(F_LIGHT, 130), anchor="lm")
+    d = thoi_tiet["daily"] if thoi_tiet else None
+    i0 = d["time"].index(hom_nay.isoformat()) if d and hom_nay.isoformat() in d["time"] else None
+    if thoi_tiet and i0 is not None and len(d["time"]) >= i0 + 5:
         x2 = 690
-        chu(dr, (x2, 818), mo_ta, font(F_SEMI, 40))
         f_s = font(F_REG, 30)
-        chu(dr, (x2, 872), f"Cảm giác  {round(c['apparent_temperature'])}°", f_s, fill=XAM_DAM)
-        chu(dr, (x2, 914), f"Độ ẩm  {c['relative_humidity_2m']}%  ·  Gió  {round(c['wind_speed_10m'])} km/h",
-            f_s, fill=XAM_DAM)
+        if i0 == 0:   # ảnh hôm nay: số đo hiện tại
+            c = thoi_tiet["current"]
+            mo_ta, loai = mo_ta_thoi_tiet(c["weather_code"])
+            ve_icon(dr, loai, L + 85, 885, 72, ngay=bool(c.get("is_day", 1)))
+            chu(dr, (L + 190, 885), f"{round(c['temperature_2m'])}°", font(F_LIGHT, 130), anchor="lm")
+            chu(dr, (x2, 818), mo_ta, font(F_SEMI, 40))
+            chu(dr, (x2, 872), f"Cảm giác  {round(c['apparent_temperature'])}°", f_s, fill=XAM_DAM)
+            chu(dr, (x2, 914), f"Độ ẩm  {c['relative_humidity_2m']}%  ·  Gió  {round(c['wind_speed_10m'])} km/h",
+                f_s, fill=XAM_DAM)
+        else:         # ảnh làm sẵn cho ngày sau: dự báo của chính ngày đó
+            mo_ta, loai = mo_ta_thoi_tiet(d["weather_code"][i0])
+            ve_icon(dr, loai, L + 85, 885, 72)
+            chu(dr, (L + 190, 885), f"{round(d['temperature_2m_max'][i0])}°", font(F_LIGHT, 130), anchor="lm")
+            chu(dr, (x2, 818), f"{mo_ta} (dự báo)", font(F_SEMI, 40))
+            chu(dr, (x2, 872), f"Thấp nhất  {round(d['temperature_2m_min'][i0])}°", f_s, fill=XAM_DAM)
+            mua0 = d.get("precipitation_probability_max", [None] * 16)[i0]
+            chu(dr, (x2, 914), f"Khả năng mưa  {mua0 if mua0 is not None else '—'}%", f_s, fill=XAM_DAM)
         o = (R - L) / 4
-        for i in range(1, 5):
+        for i in range(i0 + 1, i0 + 5):
             ngay_dt = datetime.strptime(d["time"][i], "%Y-%m-%d").date()
-            cx = L + o * (i - 1) + o / 2
-            ten = "Mai" if i == 1 else THU_NGAN[ngay_dt.weekday()]
+            cx = L + o * (i - i0 - 1) + o / 2
+            ten = "Mai" if i == i0 + 1 else THU_NGAN[ngay_dt.weekday()]
             chu(dr, (cx, 990), ten, font(F_SEMI, 30), anchor="mm")
             ve_icon(dr, mo_ta_thoi_tiet(d["weather_code"][i])[1], cx, 1036, 32)
             chu(dr, (cx, 1088), f"{round(d['temperature_2m_max'][i])}°", font(F_SEMI, 32), anchor="rm")
             chu(dr, (cx + 8, 1088), f" {round(d['temperature_2m_min'][i])}°", font(F_REG, 32),
                 fill=XAM, anchor="lm")
-            mua = d.get("precipitation_probability_max", [None] * 5)[i]
+            mua = d.get("precipitation_probability_max", [None] * 16)[i]
             if mua:
                 chu(dr, (cx, 1120), f"mưa {mua}%", font(F_REG, 22), fill=XAM, anchor="mm")
-            if i < 4:
-                dr.line([L + o * i, 972, L + o * i, 1128], fill=XAM_NHAT, width=2)
+            if i < i0 + 4:
+                dr.line([L + o * (i - i0), 972, L + o * (i - i0), 1128], fill=XAM_NHAT, width=2)
     else:
         chu(dr, (L, 870), "Chưa có dữ liệu thời tiết", font(F_REG, 38), fill=XAM)
     ke_ngang(dr, 1145, fill=XAM, w=2)
@@ -472,9 +483,18 @@ def ve(hom_nay: date, thoi_tiet, vang=None):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     d = datetime.strptime(sys.argv[1], "%Y-%m-%d").date() if len(sys.argv) > 1 else datetime.now(GIO_VN).date()
-    img = ve(d, lay_thoi_tiet(), lay_gia_vang())
+    tt, vang = lay_thoi_tiet(), lay_gia_vang()
+    img = ve(d, tt, vang)
     img.save(FILE_RA, optimize=True)
     print("Đã lưu:", FILE_RA)
+    # Làm sẵn ảnh cho mấy ngày tới: Kindle tự đổi sang khi qua ngày mới, kể cả lúc không có mạng
+    so_ngay = int(os.environ.get("SO_NGAY_LAM_SAN", "0"))
+    thu_muc = os.path.dirname(os.path.abspath(FILE_RA))
+    for k in range(so_ngay):
+        n = d + timedelta(days=k)
+        p = os.path.join(thu_muc, f"bg-{n.isoformat()}.png")
+        ve(n, tt, vang).save(p, optimize=True)
+        print("Đã lưu:", p)
 
 if __name__ == "__main__":
     main()

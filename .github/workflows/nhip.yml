@@ -1,0 +1,48 @@
+name: Nhip hen gio
+
+# Bo hen gio chay ngay tren GitHub (thay cho cron cua GitHub hay bi bo luot):
+# - Chay lien tuc ~5 gio 45 phut, cu 30 phut bam chay "Cap nhat man hinh cho" mot lan.
+# - Truoc khi het gio, tu goi lai chinh no -> thanh vong lap khong dut.
+# - Lich "schedule" ben duoi chi de khoi dong lai neu vong bi dut (vi du GitHub gap su co).
+# GITHUB_TOKEN duoc phep kich hoat workflow_dispatch, nen khong can token rieng.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 */3 * * *"
+
+permissions:
+  actions: write
+
+concurrency:
+  group: nhip                 # luon chi co 1 vong dang chay
+  cancel-in-progress: false
+
+jobs:
+  nhip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CHU_KY_PHUT: 30
+      TONG_PHUT: 345
+    steps:
+      - name: Bam chay cap nhat moi 30 phut
+        run: |
+          bat_dau=$(date +%s)
+          het=$(( bat_dau + TONG_PHUT * 60 ))
+          while :; do
+            gh workflow run cap-nhat.yml --ref main && echo "$(date -u +%H:%M) da bam chay cap nhat" \
+              || echo "$(date -u +%H:%M) loi bam chay (bo qua)"
+            ke_tiep=$(( $(date +%s) + CHU_KY_PHUT * 60 ))
+            [ $ke_tiep -ge $het ] && break
+            sleep $(( CHU_KY_PHUT * 60 ))
+          done
+
+      - name: Tu goi lai de chay vong tiep theo
+        if: always()
+        run: |
+          gh workflow run nhip.yml --ref main
+          gh api -X PUT "repos/$GH_REPO/actions/workflows/nhip.yml/enable" || true
+          gh api -X PUT "repos/$GH_REPO/actions/workflows/cap-nhat.yml/enable" || true
