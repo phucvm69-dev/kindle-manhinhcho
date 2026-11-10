@@ -33,6 +33,7 @@ go_man_hinh_khoa() { umount $SS_GOC 2>/dev/null && log "tra lai man hinh khoa go
 tuoi() { echo $(( $(date +%s) - $(cat $R/last 2>/dev/null || echo 0) )); }          # tu lan tai anh THANH CONG
 tuoi_thu() { echo $(( $(date +%s) - $(cat $R/last_thu 2>/dev/null || echo 0) )); }  # tu lan THU (bat wifi) gan nhat
 tuoi_sach() { echo $(( $(date +%s) - $(cat $R/last_sach 2>/dev/null || echo 0) )); }
+can_lam_gi() { den_han || [ $(tuoi) -ge ${LAM_MOI_KHI_MO:-1800} ] || [ $(tuoi_sach) -ge ${DONG_BO_KHI_MO:-1800} ]; }
 den_han() { [ $(tuoi) -ge $(( CHU_KY - 300 )) ]; }                                   # da den gio cap nhat anh
 co_mang() { [ "$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)" = "CONNECTED" ]; }
 
@@ -65,6 +66,11 @@ tranh_thu() {
         log "co mang tro lai, tai bu"
         tai_anh && dong_bo_sach
         dang_cho && ve
+    elif [ $(tuoi) -ge ${LAM_MOI_KHI_MO:-1800} ]; then
+        log "dang co mang, lam moi anh"
+        tai_anh
+        [ $(tuoi_sach) -ge ${DONG_BO_KHI_MO:-1800} ] && dong_bo_sach
+        dang_cho && ve
     elif [ $(tuoi_sach) -ge ${DONG_BO_KHI_MO:-1800} ]; then
         dong_bo_sach
     fi
@@ -78,7 +84,7 @@ canh_mang() {
     k=0
     while [ $k -lt 540 ]; do                      # toi da ~3 gio
         dang_cho && break
-        den_han || [ $(tuoi_sach) -ge ${DONG_BO_KHI_MO:-1800} ] || break
+        can_lam_gi || break
         co_mang && { tranh_thu; break; }
         sleep 20; k=$((k + 1))
     done
@@ -107,7 +113,7 @@ while true; do
         goingToScreenSaver*)
             log "vao man hinh cho"
             ( if [ "$VE_DE" = "1" ]; then sleep 4; dang_cho && ve; fi
-              den_han && tranh_thu ) &          # dang co mang luc khoa may thi tai bu luon
+              can_lam_gi && tranh_thu ) &       # dang co mang luc khoa may: tai bu / lam moi luon
             ;;
         outOfScreenSaver*)
             canh_mang &                          # mo may: co mang la tai bu ngay

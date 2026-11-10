@@ -6,5 +6,6 @@ GIO_NGU=23           # tu gio nay...
 GIO_THUC=6           # ...den gio nay: khong thuc day (tiet kiem pin ban dem)
 VE_DE=1              # 1 = ve them anh sau 4 giay (du phong). 0 = tat
 DONG_BO_KHI_MO=1800  # mo khoa + wifi dang bat: dong bo sach neu da qua so giay nay
+LAM_MOI_KHI_MO=1800  # dang co mang (mo/khoa may): tai lai anh neu anh cu hon so giay nay
 REPO_SACH=phucvm69-dev/kindle-sach
 # Ma truy cap (chi doc) dat trong file token.txt cung thu muc nay

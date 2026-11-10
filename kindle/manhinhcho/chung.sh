@@ -27,6 +27,7 @@ doc_cau_hinh() {
     REPO_SACH=$(cfg REPO_SACH "phucvm69-dev/kindle-sach" '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
     VE_DE=$(cfg VE_DE 1 '[01]')
     DONG_BO_KHI_MO=$(cfg DONG_BO_KHI_MO 1800 '[0-9]{1,6}')
+    LAM_MOI_KHI_MO=$(cfg LAM_MOI_KHI_MO 1800 '[0-9]{1,6}')
     [ $CHU_KY -lt 900 ] && CHU_KY=900       # it nhat 15 phut, tranh hao pin
 }
 THU_MUC_SACH=/mnt/us/documents/Sach-GitHub
